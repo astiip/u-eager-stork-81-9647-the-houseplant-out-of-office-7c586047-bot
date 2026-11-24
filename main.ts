@@ -33,9 +33,28 @@ if (LINE !== LINE.trim() || LINE.includes("  ")) {
 mkdirSync("/output", { recursive: true });
 writeFileSync(ENTRY_PATH, LINE, "utf8");
 
-// Read-back verification: the written bytes must be exactly LINE,
-// otherwise the entry is wrong and we refuse to pass silently.
-const written = readFileSync(ENTRY_PATH, "utf8");
-if (written !== LINE) {
-  throw new Error("Read-back mismatch: /output/entry.txt is not LINE.");
+// Read-back verification, kept as its own function so the check is
+// easy to audit and cannot be silently dropped by a later edit: the
+// file on disk must be exactly the entry we meant to write. This
+// matters because a truncated write, a stray newline, or an encoding
+// slip would submit a different (or invalid) line than the one we
+// reviewed — and a silent pass here would hide that. Length is counted
+// in Unicode code points, not bytes: the entry contains "—" (em dash,
+// 3 bytes in UTF-8), so a byte count would overstate its length.
+function verifyEntryWritten(): void {
+  const written = readFileSync(ENTRY_PATH, "utf8");
+  if (written !== LINE) {
+    throw new Error("Read-back mismatch: /output/entry.txt is not LINE.");
+  }
+  const writtenCodePoints = [...written].length;
+  if (writtenCodePoints < 1 || writtenCodePoints > 200) {
+    throw new Error(
+      `Read-back length must be 1-200 characters, got ${writtenCodePoints}.`,
+    );
+  }
+  if (written.includes("\n") || written.includes("\r")) {
+    throw new Error("Read-back must be a single line with no newline.");
+  }
 }
+
+verifyEntryWritten();
